@@ -1,67 +1,83 @@
-import * as path from 'path'
-import { exists, lstat, readdir } from '@actions/io/lib/io-util'
-import { CompressionMethod } from './constants'
-import { getCacheFileName } from './tar'
+import * as path from "path";
+import { exists, lstat, readdir } from "@actions/io/lib/io-util";
+import { CompressionMethod } from "./constants";
+import { getCacheFileName } from "./tar";
 
 interface CacheResult {
-  cacheKey: string,
-  archiveLocation: string,
+  cacheKey: string;
+  archiveLocation: string;
 }
 
 interface CacheCandidate {
-  cacheKey?: string,
-  cacheBirthtimeMs: number,
+  cacheKey?: string;
+  cacheBirthtimeMs: number;
 }
 
 export async function getLocalCacheEntry(
   keys: string[],
-  compressionMethod: CompressionMethod,
+  compressionMethod: CompressionMethod
 ): Promise<CacheResult | undefined> {
-  const cacheFileName = await getCacheFileName(compressionMethod)
-  const result = await keys.reduce<Promise<CacheResult | undefined>>(async (asyncMemo, key) => {
-    const memo = await asyncMemo
-    if (memo) return memo
-    const cacheDir = await getLocalArchiveFolder(key, true)
-    if (!cacheDir || !await exists(cacheDir)) return undefined
-    const cacheKey = path.basename(cacheDir)
-    const archiveLocation = path.join(cacheDir, cacheFileName)
-    if (!await exists(archiveLocation)) return undefined
-    return {
-      cacheKey,
-      archiveLocation,
-    }
-  }, Promise.resolve(undefined))
-  return result
+  const cacheFileName = await getCacheFileName(compressionMethod);
+  const result = await keys.reduce<Promise<CacheResult | undefined>>(
+    async (asyncMemo, key) => {
+      const memo = await asyncMemo;
+      if (memo) return memo;
+      const cacheDir = await getLocalArchiveFolder(key, true);
+      if (!cacheDir || !(await exists(cacheDir))) return undefined;
+      const cacheKey = path.basename(cacheDir);
+      const archiveLocation = path.join(cacheDir, cacheFileName);
+      if (!(await exists(archiveLocation))) return undefined;
+      return {
+        cacheKey,
+        archiveLocation,
+      };
+    },
+    Promise.resolve(undefined)
+  );
+  return result;
 }
 
-export async function getLocalArchiveFolder(key: string): Promise<string>
+export async function getLocalArchiveFolder(key: string): Promise<string>;
 // eslint-disable-next-line max-len
-export async function getLocalArchiveFolder(key: string, findKey?: boolean): Promise<string | undefined>
+export async function getLocalArchiveFolder(
+  key: string,
+  findKey?: boolean
+): Promise<string | undefined>;
 // eslint-disable-next-line max-len
-export async function getLocalArchiveFolder(key: string, findKey = false): Promise<string | undefined> {
-  const { GITHUB_REPOSITORY, RUNNER_TOOL_CACHE } = process.env
-  if (!RUNNER_TOOL_CACHE) {
-    throw new TypeError('Expected RUNNER_TOOL_CACHE environment variable to be defined.')
+export async function getLocalArchiveFolder(
+  key: string,
+  findKey = false
+): Promise<string | undefined> {
+  const { GITHUB_REPOSITORY, RUNNER_TOOL_CACHE_DIR } = process.env;
+  if (!RUNNER_TOOL_CACHE_DIR) {
+    throw new TypeError(
+      "Expected RUNNER_TOOL_CACHE_DIR environment variable to be defined."
+    );
   }
 
   if (!GITHUB_REPOSITORY) {
-    throw new TypeError('Expected GITHUB_REPOSITORY environment variable to be defined.')
+    throw new TypeError(
+      "Expected GITHUB_REPOSITORY environment variable to be defined."
+    );
   }
-  const cachePath = path.join(RUNNER_TOOL_CACHE, GITHUB_REPOSITORY)
-  const primaryCacheKey = path.join(cachePath, key)
-  if (!findKey || await exists(primaryCacheKey)) return primaryCacheKey
+  const cachePath = path.join(RUNNER_TOOL_CACHE_DIR, GITHUB_REPOSITORY);
+  const primaryCacheKey = path.join(cachePath, key);
+  if (!findKey || (await exists(primaryCacheKey))) return primaryCacheKey;
 
-  const files = await readdir(cachePath)
-  const { cacheKey } = await files.reduce<Promise<CacheCandidate>>(async (asyncMemo, file) => {
-    const memo = await asyncMemo
-    const stats = await lstat(path.join(cachePath, file))
-    if (!file.startsWith(key) || !stats.isDirectory()) return memo
-    if (stats.birthtimeMs > memo.cacheBirthtimeMs) {
-      return { cacheKey: file, cacheBirthtimeMs: stats.birthtimeMs }
-    }
-    return memo
-  }, Promise.resolve({ cacheKey: undefined, cacheBirthtimeMs: 0 }))
-  if (!cacheKey) return undefined
+  const files = await readdir(cachePath);
+  const { cacheKey } = await files.reduce<Promise<CacheCandidate>>(
+    async (asyncMemo, file) => {
+      const memo = await asyncMemo;
+      const stats = await lstat(path.join(cachePath, file));
+      if (!file.startsWith(key) || !stats.isDirectory()) return memo;
+      if (stats.birthtimeMs > memo.cacheBirthtimeMs) {
+        return { cacheKey: file, cacheBirthtimeMs: stats.birthtimeMs };
+      }
+      return memo;
+    },
+    Promise.resolve({ cacheKey: undefined, cacheBirthtimeMs: 0 })
+  );
+  if (!cacheKey) return undefined;
 
-  return path.join(cachePath, cacheKey)
+  return path.join(cachePath, cacheKey);
 }
